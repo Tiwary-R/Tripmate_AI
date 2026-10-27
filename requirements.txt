@@ -1,0 +1,21 @@
+# Orchestrator: Google ADK (google-adk). LangGraph removed from app code;
+# it may still be present transitively via the langchain package.
+langchain==1.3.2
+langchain-groq==1.1.3
+langchain-community==0.4.2
+langchain-tavily==0.2.18
+python-dotenv==1.2.2
+tavily-python==0.7.24
+requests==2.34.2
+airportsdata==20260315
+pycountry==26.2.16
+
+streamlit==1.65.0
+langchain-ollama==1.1.0
+mcp==2.3.0
+google-adk==2.13.0
+greenlet
+aiosqlite
+markdown
+xhtml2pdf
+pytest
