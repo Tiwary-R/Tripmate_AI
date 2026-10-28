@@ -74,3 +74,6 @@ docs: DOCUMENTATION.md, AGENTS_AND_ADK.md, PROJECT_OVERVIEW.md, AWS_ARCHITECTURE
 - Without optional data keys, tools degrade gracefully (sample/searched data) and the plan is still produced.
 - Everything persists locally in SQLite (`preferences.db`, `memory.db`, `adk_sessions.db`, `scores.db`,
   `users.db`) — all git-ignored.
+
+## License
+Released under the [MIT License](LICENSE).
