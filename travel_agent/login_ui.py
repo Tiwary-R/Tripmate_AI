@@ -3,6 +3,7 @@
 import streamlit as st
 
 from travel_agent.auth import AuthError, UserStore
+from travel_agent.ui_theme import login_hero
 
 
 @st.cache_resource
@@ -21,12 +22,7 @@ def current_user() -> dict | None:
     if user := st.session_state.get("auth_user"):
         return user
 
-    st.markdown("<h1 style='text-align:center'>🇮🇳 TripMate AI</h1>", unsafe_allow_html=True)
-    st.markdown(
-        "<p style='text-align:center;color:#6b7385'>Your multi-agent travel planner for trips within India.<br>"
-        "Sign in or create an account to start planning.</p>",
-        unsafe_allow_html=True,
-    )
+    login_hero()
     _, center, _ = st.columns([1, 1.3, 1])
     with center:
         login_tab, register_tab = st.tabs(["🔑 Login", "📝 Create account"])

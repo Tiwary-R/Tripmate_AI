@@ -1,0 +1,11 @@
+# Base colors so the widgets Streamlit renders itself match the travel theme.
+# The richer styling (hero banner, dark sidebar, boarding-pass forms) lives in
+# travel_agent/ui_theme.py.
+
+[theme]
+base = "light"
+primaryColor = "#0F8B8D"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EAF6FB"
+textColor = "#0B2E3F"
+font = "sans serif"

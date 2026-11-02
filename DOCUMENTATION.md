@@ -63,6 +63,13 @@ State · sessions · memory: Google ADK SessionService (durable SQLite) + SQLite
 - **Memory** (`memory.py`) — ADK session service (durable SQLite), `PreferenceStore`, `MemoryStore`, `ScoreLog`.
 - **Scope** (`india.py`) — worldwide airport resolution, country lookup, and the `TRAVEL_SCOPE` policy.
 - **Auth** (`auth.py`, `login_ui.py`) — SQLite accounts with PBKDF2-hashed passwords.
+- **Booking & price comparison** (`booking.py`) — pure, offline, no API keys. Builds prefilled deep-links
+  into each booking site (flights + hotels), auto-selecting providers by `destination_country` (India OTAs vs
+  global). Extracts one indicative estimate from the planner's own flight/hotel markdown (`estimate_from_markdown`)
+  — labelled an estimate, never a live quote. Surfaced in the UI "🧾 Book & Compare" tab and appended to the
+  PDF export (`booking_markdown`). Booking happens on the provider's own site; TripMate handles no payments
+  and stores no card data. Rationale: live rates from Booking.com/MakeMyTrip/Skyscanner need paid partner APIs,
+  so we deep-link to real search pages instead of inventing prices.
 
 ## 4. Run & configure
 ```powershell

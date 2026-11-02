@@ -15,6 +15,10 @@ score. **Worldwide** by default. **Free and local** (local Llama via Ollama + fr
   prompt-injection defense, grounding disclaimers, and a transparency panel.
 - **Memory:** durable ADK sessions (SQLite), long-term trip recall, and per-user preferences.
 - **Evaluation:** heuristic metrics + optional LLM-as-judge, shown as a score in the UI, plus an offline suite.
+- **Book & compare:** a "Book & Compare" tab deep-links into each booking site (auto-selected by
+  destination — MakeMyTrip/Goibibo/Cleartrip for India, Skyscanner/Booking.com/Agoda abroad), prefilled with
+  your trip, alongside an indicative planner estimate. Links open the provider's own site to compare live
+  rates and book — TripMate processes no payments.
 
 ## Quick start
 ```powershell

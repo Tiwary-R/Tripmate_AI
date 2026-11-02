@@ -15,8 +15,10 @@ from travel_agent.orchestrator import TravelPlanner
 from travel_agent.login_ui import current_user, sidebar_account
 from travel_agent.mcp_client import mcp_status
 from travel_agent.responsible_ai import safety_engine_label
+from travel_agent.ui_theme import apply_travel_theme, chat_hero
 
 st.set_page_config(page_title="TripMate AI - Travel Planner", page_icon="🌍", layout="wide")
+apply_travel_theme()
 
 user = current_user()
 if user is None:
@@ -91,6 +93,62 @@ def _render_rai(events: list):
                "output is PII-redacted and scanned; the final plan gets a safety pass. Figures are estimates.")
 
 
+def _example_chips():
+    """Clickable example prompts shown above the chat box on the empty state."""
+    st.caption("✨ Try an example:")
+    cols = st.columns(3)
+    for i, (label, prompt) in enumerate(EXAMPLES):
+        if cols[i % 3].button(label, key=f"ex_{i}", use_container_width=True, help=prompt):
+            ss.pending = prompt
+            st.rerun()
+
+
+def _trip_banner(trip: dict):
+    """A compact summary row at the top of the final plan. Stacks on mobile via CSS."""
+    if not trip or not trip.get("destination"):
+        return
+    budget = trip.get("budget")
+    budget = budget.title() if isinstance(budget, str) and budget else "—"
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📍 Destination", trip.get("destination") or "—")
+    c2.metric("🛫 From", trip.get("origin") or "—")
+    c3.metric("📅 Days", trip.get("num_days") or "—")
+    c4.metric("💰 Budget", budget)
+
+
+def _render_booking(trip: dict, flight_md: str, hotel_md: str):
+    """Book & Compare tab: indicative estimate + prefilled deep-links per provider."""
+    from travel_agent import booking
+
+    if not trip or not trip.get("destination"):
+        st.caption("Booking options appear once a destination is set.")
+        return
+    st.markdown(f"### 🧾 Book your trip to {trip.get('destination')}")
+    st.caption("Clicking a provider opens its own site with your trip prefilled, so you can compare live "
+               "rates and complete the booking there. **TripMate doesn't process payments.**")
+
+    def _section(title: str, providers: list, estimate: str | None, unit: str):
+        if not providers:
+            return
+        st.markdown(f"#### {title}")
+        if estimate:
+            st.markdown(f"Indicative {unit} *(planner estimate — not a live quote)*: **{estimate}**")
+        cols = st.columns(3)
+        for i, p in enumerate(providers):
+            with cols[i % 3]:
+                st.link_button(p["name"], p["url"], use_container_width=True)
+                st.caption(p["blurb"])
+
+    _section("✈️ Flights & trains", booking.flight_providers(trip),
+             booking.estimate_from_markdown(flight_md), "fare per person")
+    if not trip.get("origin"):
+        st.caption("Add a departure city to get flight booking links.")
+    _section("🏨 Hotels", booking.hotel_providers(trip),
+             booking.estimate_from_markdown(hotel_md), "rate per night")
+    st.caption("ℹ️ Estimates come from the planner's own research and may differ from live prices. "
+               "Always confirm fares, dates and cancellation terms on the provider's site before paying.")
+
+
 def _score_badge(ev: dict):
     c1, c2 = st.columns([1, 4])
     c1.metric("Agent score", f"{ev.get('overall', 0)}/100", ev.get("grade", ""))
@@ -101,11 +159,14 @@ def _score_badge(ev: dict):
 def _export_buttons(final_md: str, trip: dict):
     if not final_md:
         return
+    from travel_agent import booking
     from travel_agent.export import itinerary_to_ics, plan_to_pdf
+
+    pdf_md = final_md + booking.booking_markdown(trip)
 
     c1, c2 = st.columns(2)
     try:
-        c1.download_button("⬇️ Download plan (PDF)", data=plan_to_pdf(final_md, "Travel Plan"),
+        c1.download_button("⬇️ Download plan (PDF)", data=plan_to_pdf(pdf_md, "Travel Plan"),
                            file_name="travel_plan.pdf", mime="application/pdf", use_container_width=True)
     except Exception as exc:
         c1.caption(f"PDF export unavailable: {exc}")
@@ -148,18 +209,34 @@ def _render_eval(ev: dict):
         st.caption(f"Average of last {len(history)} runs: {avg}/100")
 
 
+def _reports_from_values(values: dict) -> dict:
+    """Rebuild a render_plan 'reports' dict from persisted thread state (e.g. after a restart)."""
+    data = {"__trip__": values.get("trip") or {}, "__rai__": values.get("rai_log") or []}
+    for key, _ in REPORT_TABS:
+        if values.get(key):
+            data[key] = values[key]
+    if values.get("eval_report"):
+        data["__eval__"] = values["eval_report"]
+    return data
+
+
 def render_plan(final: str, reports: dict | None):
     reports = reports or {}
     present = [(k, label) for k, label in REPORT_TABS if reports.get(k)]
     rai = reports.get("__rai__") or []
     ev = reports.get("__eval__")
-    extra = ([("__eval__", "📊 Evaluation")] if ev else []) + ([("__rai__", "🛡️ Responsible AI")] if rai else [])
+    trip = reports.get("__trip__") or {}
+    booking_tab = [("__booking__", "🧾 Book & Compare")] if trip.get("destination") else []
+    extra = (([("__eval__", "📊 Evaluation")] if ev else [])
+             + ([("__rai__", "🛡️ Responsible AI")] if rai else [])
+             + booking_tab)
     if not present and not extra:
         st.markdown(final)
         return
     labels = ["📋 Final plan"] + [label for _, label in present] + [label for _, label in extra]
     tabs = st.tabs(labels)
     with tabs[0]:
+        _trip_banner((reports or {}).get("__trip__") or {})
         if ev:
             _score_badge(ev)
         st.markdown(final)
@@ -169,7 +246,12 @@ def render_plan(final: str, reports: dict | None):
             st.markdown(reports[key])
     for tab, (key, _) in zip(tabs[len(present) + 1:], extra):
         with tab:
-            _render_eval(ev) if key == "__eval__" else _render_rai(rai)
+            if key == "__eval__":
+                _render_eval(ev)
+            elif key == "__rai__":
+                _render_rai(rai)
+            elif key == "__booking__":
+                _render_booking(trip, reports.get("flight_results", ""), reports.get("hotel_results", ""))
 
 
 def consume(stream, status):
@@ -226,8 +308,16 @@ def run_stream(stream, resuming=False):
             status.update(label="Your plan is ready!", state="complete", expanded=False)
         values = planner.get_values(ss.thread_id)
         final = values.get("final_response", "")
-        if isinstance(data, dict) and not data.get("__eval__") and values.get("eval_report"):
-            data["__eval__"] = values["eval_report"]  # fallback if the eval node wasn't streamed
+        if isinstance(data, dict):
+            # On HITL resume the supervisor node isn't replayed, so backfill the trip
+            # (drives the trip banner + Book & Compare tab) and results from thread state.
+            if not data.get("__trip__"):
+                data["__trip__"] = values.get("trip") or {}
+            for _rk, _ in REPORT_TABS:
+                if _rk not in data and values.get(_rk):
+                    data[_rk] = values[_rk]
+            if not data.get("__eval__") and values.get("eval_report"):
+                data["__eval__"] = values["eval_report"]  # fallback if the eval node wasn't streamed
         if data:
             ss.reports[_key(final)] = data
         render_plan(final, data or None)
@@ -236,25 +326,25 @@ def run_stream(stream, resuming=False):
 # ---------------- Sidebar ----------------
 with st.sidebar:
     st.title("🌍 TripMate AI")
-    st.caption("Part 3: Guardrails + Supervisor + MCP + Human-in-the-loop. Trips **worldwide**.")
+    st.caption("Your AI travel crew plans flights, stays, weather, budget and a day-by-day itinerary — **anywhere in the world**.")
 
     st.subheader("👤 Account")
     sidebar_account()
     user_id = user["username"]
 
-    st.subheader("⚙️ System")
-    st.markdown(f"**Model:** {MODEL_LABEL}")
-    st.markdown(f"**Memory:** {'PostgreSQL' if planner.backend == 'postgres' else 'In-memory'}")
-    status = mcp_status()
-    if status["enabled"]:
-        up = sum(status["servers"].values())
-        st.markdown(f"**MCP servers:** {up}/{len(status['servers'])} connected "
-                    f"({', '.join(k for k, v in status['servers'].items() if v)})")
-    if ENABLE_RAI:
-        st.markdown(f"**🛡️ Responsible AI:** on · {safety_engine_label()}")
-    else:
-        st.markdown("**🛡️ Responsible AI:** off")
-    st.markdown(f"**📊 Evaluation:** on · heuristics{' + LLM judge' if ENABLE_LLM_JUDGE else ''}")
+    with st.expander("⚙️ System status", expanded=False):
+        st.markdown(f"**Model:** {MODEL_LABEL}")
+        st.markdown(f"**Memory:** {'PostgreSQL' if planner.backend == 'postgres' else 'In-memory'}")
+        status = mcp_status()
+        if status["enabled"]:
+            up = sum(status["servers"].values())
+            st.markdown(f"**MCP servers:** {up}/{len(status['servers'])} connected "
+                        f"({', '.join(k for k, v in status['servers'].items() if v)})")
+        if ENABLE_RAI:
+            st.markdown(f"**🛡️ Responsible AI:** on · {safety_engine_label()}")
+        else:
+            st.markdown("**🛡️ Responsible AI:** off")
+        st.markdown(f"**📊 Evaluation:** on · heuristics{' + LLM judge' if ENABLE_LLM_JUDGE else ''}")
     if DEMO_MODE:
         st.warning("Demo mode: sample data (weather is still live). Start **Ollama** or add a free **GROQ_API_KEY**.")
     elif LLM_PROVIDER == "ollama":
@@ -275,11 +365,6 @@ with st.sidebar:
             for m in remembered:
                 st.caption(m)
 
-    st.subheader("💡 Examples")
-    for label, prompt in EXAMPLES:
-        if st.button(label, use_container_width=True, help=prompt):
-            ss.pending = prompt
-
     if st.button("🆕 New conversation", use_container_width=True):
         ss.thread_id = str(uuid.uuid4())
         ss.awaiting_review = ss.pending_resume = None
@@ -288,15 +373,26 @@ with st.sidebar:
 
 
 # ---------------- Main area ----------------
-st.title(f"Hi {user.get('full_name') or user['username']}! Plan your trip 🌍")
+chat_hero(user.get("full_name") or user["username"])
 st.caption("Guardrail → Supervisor picks the agents → (your approval) → Flight/Hotel/Weather/Budget/Itinerary → final plan.")
+if not planner.history(ss.thread_id) and not ss.awaiting_review:
+    st.info("💡 **Tip:** include your **destination**, **origin**, **number of days**, **budget** and **interests** "
+            "for the best plan — e.g. *\"5 days in Lisbon from Delhi, mid-range, food and history\"*. "
+            "Or tap an example below.")
 
-for msg in planner.history(ss.thread_id):
+_history = planner.history(ss.thread_id)
+_latest_values = planner.get_values(ss.thread_id) if _history else {}
+for msg in _history:
     with st.chat_message(msg["role"], avatar="🧳" if msg["role"] == "user" else "🌍"):
         if msg["role"] == "user":
             st.markdown(msg["content"])
         else:
-            render_plan(msg["content"], ss.reports.get(_key(msg["content"])))
+            cached = ss.reports.get(_key(msg["content"]))
+            if cached is None and _latest_values.get("final_response", "") == msg["content"]:
+                # Not in this session's cache (e.g. after a restart) — rebuild tabs from thread state.
+                cached = _reports_from_values(_latest_values)
+                ss.reports[_key(msg["content"])] = cached
+            render_plan(msg["content"], cached)
 
 # HITL review card (shown while the graph is paused at human_review).
 if ss.awaiting_review:
@@ -329,6 +425,9 @@ if ss.pending_resume:
     decision = ss.pending_resume
     ss.pending_resume = None
     run_stream(planner.resume(decision, ss.thread_id, user_id, hitl=hitl), resuming=True)
+
+if not planner.history(ss.thread_id) and not ss.awaiting_review:
+    _example_chips()
 
 query = st.chat_input("Where in the world do you want to go?") or ss.pending
 ss.pending = None
